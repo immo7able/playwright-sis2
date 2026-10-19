@@ -1,0 +1,17 @@
+{
+  "name": "sis2-playwright",
+  "version": "1.0.0",
+  "description": "SIS 2 - Playwright test automation for the Practice Software Testing Toolshop",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5"
+  }
+}

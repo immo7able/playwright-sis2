@@ -1,0 +1,12 @@
+Running 8 tests using 6 workers
+
+  ok 1 [setup] › tests\auth.setup.ts:6:6 › authenticate (4.4s)
+  ok 2 [chromium] › tests\login.spec.ts:15:7 › TC-02 Log in › invalid password shows an error and stays on the login page (4.8s)
+  ok 6 [chromium] › tests\login.spec.ts:4:7 › TC-02 Log in › valid credentials open the account page (5.2s)
+  ok 5 [chromium] › tests\reset-password.spec.ts:7:7 › TC-05 Reset a password › a known email gets a confirmation (5.2s)
+  ok 3 [chromium] › tests\compare-products.spec.ts:4:7 › TC-04 Compare two products › Hammer is cheaper than Combination Pliers, and the comparison page shows both (6.0s)
+  ok 7 [chromium] › tests\register.spec.ts:5:7 › TC-01 Register a new customer › a new customer can register and then sign in with the new account (6.3s)
+  ok 8 [chromium] › tests\reset-password.spec.ts:17:7 › TC-05 Reset a password › an unknown email gets an error (1.9s)
+  ok 4 [chromium] › tests\buy-product.spec.ts:9:7 › TC-03 Buy a product › a signed-in customer can buy two units of an in-stock product (8.6s)
+
+  8 passed (16.3s)
