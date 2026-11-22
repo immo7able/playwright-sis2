@@ -16,6 +16,99 @@ npx playwright show-report     # open the HTML report of the last run
 
 Optional: `BASE_URL` / `API_URL` environment variables override the front-end and API addresses.
 
+## CI
+
+[![Playwright Tests](https://github.com/immo7able/playwright-sis2/actions/workflows/playwright.yml/badge.svg?branch=main)](https://github.com/immo7able/playwright-sis2/actions/workflows/playwright.yml)
+
+**CI system:** GitHub Actions. The repository already lives on GitHub, so Actions is built in: no server
+of our own, free minutes for public repositories, matrices for sharding, artefacts and a status badge out of the box.
+
+**Pipeline** ([`.github/workflows/playwright.yml`](.github/workflows/playwright.yml)):
+
+- runs on **every push** (any branch) and **every pull request**, plus manually via *Run workflow* (`workflow_dispatch`);
+- `actions/setup-node` with `cache: npm` → `npm ci` (dependencies restored from the npm cache, keyed on `package-lock.json`);
+- `npx playwright install --with-deps chromium` (browser + Linux system libraries);
+- the **full suite**, no `--grep` / `--project` filters, split into **4 shards** (`--shard=i/4`) that run in parallel;
+- the **Merge reports** job downloads the 4 blob reports and builds one HTML report and one JUnit file (`merge.config.ts`);
+- artefacts, kept **14 days**: `playwright-report` (merged HTML), `test-results-1…4` (traces, screenshots,
+  videos of failed/retried tests + per-shard JUnit), `junit-report` (merged JUnit);
+- reports are uploaded even when tests fail (`if: ${{ !cancelled() }}`), `fail-fast: false` keeps the other shards running,
+  `concurrency` cancels an outdated run when a new push arrives on the same branch.
+
+**CI settings** ([`playwright.config.ts`](playwright.config.ts), active when `CI` is set — GitHub sets `CI=true` itself):
+
+| Setting | CI | Local | Why |
+|---|---|---|---|
+| `forbidOnly` | `true` | `false` | a forgotten `test.only` fails the run instead of silently running one test |
+| `retries` | `2` | `0` | a flaky test is reported as *flaky*, not red |
+| `workers` | `2` | auto | GitHub runners have 2–4 vCPUs |
+| `reporter` | `list`, `blob`, `junit` (`reports/junit.xml`) | `list`, `html` | blob = per-shard result for merging; JUnit = machine-readable |
+| `trace` | `on-first-retry` | same | a trace of exactly the failed attempt |
+| `video` / `screenshot` | kept on failure | same | evidence in `test-results-N` |
+
+`fullyParallel: true` lets `--shard` split single tests rather than whole files. The `setup` project (log in once)
+is a dependency of `chromium`, so **each shard runs it for itself** — that is why the merged report shows the
+`authenticate` test once per shard.
+
+`BASE_URL` can be overridden with a repository variable (*Settings → Secrets and variables → Actions → Variables*);
+if it is not set, the config falls back to `https://practicesoftwaretesting.com`. No passwords are stored:
+every test registers its own throwaway user through the API.
+
+To open a trace: download `playwright-report` or `test-results-N` from the run page and run
+`npx playwright show-trace <trace.zip>`, or drop the zip onto <https://trace.playwright.dev>.
+
+### Why the CI runs are red
+
+The pipeline works, but the tests cannot reach the site from GitHub. `practicesoftwaretesting.com` is behind
+Cloudflare, and GitHub-hosted runners (data-centre IP addresses) get a **"Verify you are human"** page instead of the
+login form. So `tests/auth.setup.ts` times out waiting for `getByTestId('email')` on all 3 attempts (`retries: 2`),
+and the 7 tests that depend on it are skipped. The screenshot, video, error context and the trace of the first retry
+are in the artefacts of [the PR run](https://github.com/immo7able/playwright-sis2/actions/runs/45028752556).
+Registration through the API works; only the web front end is blocked. The same suite passes locally (8/8 with `CI=true`).
+
+A test must not solve a CAPTCHA, so this is reported as it is. A possible fix would be to start the open-source
+version of the Toolshop ([testsmith-io/practice-software-testing](https://github.com/testsmith-io/practice-software-testing))
+with Docker Compose inside the job and point `BASE_URL` / `API_URL` at it; it was not done because it adds several
+minutes to every shard and changes what the suite tests.
+
+### Runtime: before / after sharding
+
+Numbers from GitHub Actions (`ubuntu-latest`), median of 3 runs. "Before" = the same workflow with the matrix set to
+`shardIndex: [1]`, `shardTotal: [1]`.
+
+| Configuration | Total run time | *Run Playwright tests* step (slowest shard) | Run |
+| --- | --- | --- | --- |
+| 1 job, no sharding | TODO | TODO | [run](TODO) |
+| 4 shards + merge | 4 min 18 s | 3 min 09 s | [run](https://github.com/immo7able/playwright-sis2/actions/runs/45028752556) |
+
+4-shard runs used: [45026462595](https://github.com/immo7able/playwright-sis2/actions/runs/45026462595) (4:23 / 3:09),
+[45028654590](https://github.com/immo7able/playwright-sis2/actions/runs/45028654590) (4:10 / 3:08),
+[45028752556](https://github.com/immo7able/playwright-sis2/actions/runs/45028752556) (4:18 / 3:09).
+
+**Conclusion:** TODO. Because of the Cloudflare block, every job spends its test step on the same thing: the setup
+login timing out 3 × 60 s, after which the other tests are skipped. Splitting the suite does not shorten that, so the
+numbers show pipeline overhead (checkout, `npm ci`, Chromium install, merge job) rather than test time. When the site
+is reachable, the suite is small (7 tests, about 30 s on one runner) and each shard spends about a minute on setup, so
+4 shards would mostly cut the test step and barely change the total time.
+
+### Running in CI mode locally
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+CI=true npx playwright test                       # PowerShell: $env:CI="true"; npx playwright test; Remove-Item Env:CI
+
+# shards + merge, as in CI
+mkdir -p all-blob-reports
+CI=true npx playwright test --shard=1/2 && cp blob-report/report.zip all-blob-reports/report-1.zip
+CI=true npx playwright test --shard=2/2 && cp blob-report/report.zip all-blob-reports/report-2.zip
+npx playwright merge-reports --config merge.config.ts ./all-blob-reports
+npx playwright show-report
+```
+
+Checked locally before the first push: the CI run produces `blob-report/` and `reports/junit.xml`; two shards merge
+into one HTML report and `reports/junit-merged.xml`; changing a `test(` to `test.only(` makes the CI-mode run fail.
+
 ## What it covers
 
 | ID | Test case | File |
@@ -36,6 +129,8 @@ pages/          one page object per screen (+ address.form.ts, a shared componen
 fixtures/       pages.fixture.ts - hands page objects and a fresh registered user to every test
 data/           user.factory.ts - unique user data per call
 playwright.config.ts
+merge.config.ts      merges the CI shards' blob reports into one HTML + JUnit report
+.github/workflows/   playwright.yml - the GitHub Actions pipeline
 ```
 
 ## Design decisions
@@ -83,3 +178,5 @@ playwright.config.ts
 
 AI was used. See [Prompt.md](Prompt.md) (exact prompts and tool) and [Review.md](Review.md)
 (what the AI produced, how it was reviewed, what was changed and why). Screenshots are in `screenshots/`.
+
+AI was also used for the CI pipeline part — see [AI_USAGE.md](AI_USAGE.md).
