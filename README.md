@@ -57,20 +57,39 @@ every test registers its own throwaway user through the API.
 To open a trace: download `playwright-report` or `test-results-N` from the run page and run
 `npx playwright show-trace <trace.zip>`, or drop the zip onto <https://trace.playwright.dev>.
 
+### Why the CI runs are red
+
+The pipeline works, but the tests cannot reach the site from GitHub. `practicesoftwaretesting.com` is behind
+Cloudflare, and GitHub-hosted runners (data-centre IP addresses) get a **"Verify you are human"** page instead of the
+login form. So `tests/auth.setup.ts` times out waiting for `getByTestId('email')` on all 3 attempts (`retries: 2`),
+and the 7 tests that depend on it are skipped. The screenshot, video, error context and the trace of the first retry
+are in the artefacts of [the PR run](https://github.com/immo7able/playwright-sis2/actions/runs/45028752556).
+Registration through the API works; only the web front end is blocked. The same suite passes locally (8/8 with `CI=true`).
+
+A test must not solve a CAPTCHA, so this is reported as it is. A possible fix would be to start the open-source
+version of the Toolshop ([testsmith-io/practice-software-testing](https://github.com/testsmith-io/practice-software-testing))
+with Docker Compose inside the job and point `BASE_URL` / `API_URL` at it; it was not done because it adds several
+minutes to every shard and changes what the suite tests.
+
 ### Runtime: before / after sharding
 
-Both numbers come from GitHub Actions (`ubuntu-latest`), median of 3 runs started with *Run workflow*.
-"Before" = the same workflow with the matrix set to `shardIndex: [1]`, `shardTotal: [1]`.
+Numbers from GitHub Actions (`ubuntu-latest`), median of 3 runs. "Before" = the same workflow with the matrix set to
+`shardIndex: [1]`, `shardTotal: [1]`.
 
 | Configuration | Total run time | *Run Playwright tests* step (slowest shard) | Run |
 | --- | --- | --- | --- |
 | 1 job, no sharding | TODO | TODO | [run](TODO) |
-| 4 shards + merge | TODO | TODO | [run](TODO) |
+| 4 shards + merge | 4 min 18 s | 3 min 09 s | [run](https://github.com/immo7able/playwright-sis2/actions/runs/45028752556) |
 
-**Conclusion:** TODO — one sentence. The suite is small (7 tests, ~30 s of test time on one runner), while every shard
-spends roughly a minute on checkout, `npm ci` and the Chromium install, and each shard also repeats the `setup` login,
-and the merge job adds its own setup. So sharding cuts the *test step* but barely changes (or can even increase) the
-*total* time; it would pay off with a larger suite.
+4-shard runs used: [45026462595](https://github.com/immo7able/playwright-sis2/actions/runs/45026462595) (4:23 / 3:09),
+[45028654590](https://github.com/immo7able/playwright-sis2/actions/runs/45028654590) (4:10 / 3:08),
+[45028752556](https://github.com/immo7able/playwright-sis2/actions/runs/45028752556) (4:18 / 3:09).
+
+**Conclusion:** TODO. Because of the Cloudflare block, every job spends its test step on the same thing: the setup
+login timing out 3 × 60 s, after which the other tests are skipped. Splitting the suite does not shorten that, so the
+numbers show pipeline overhead (checkout, `npm ci`, Chromium install, merge job) rather than test time. When the site
+is reachable, the suite is small (7 tests, about 30 s on one runner) and each shard spends about a minute on setup, so
+4 shards would mostly cut the test step and barely change the total time.
 
 ### Running in CI mode locally
 

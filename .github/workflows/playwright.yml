@@ -18,8 +18,10 @@ jobs:
     strategy:
       fail-fast: false            # one failed shard does not cancel the others
       matrix:
-        shardIndex: [1, 2, 3, 4]
-        shardTotal: [4]
+        # TEMPORARY for the "before" timing: 1 job, no sharding.
+        # Restore to shardIndex: [1, 2, 3, 4] and shardTotal: [4] afterwards.
+        shardIndex: [1]
+        shardTotal: [1]
     steps:
       - uses: actions/checkout@v4
 
